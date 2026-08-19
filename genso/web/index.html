@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LinkHUB　零式　MINI MAX簡易エディタ</title>
+  <link rel="stylesheet" href="/genso/web/css/style.css?v=20260816-3">
+</head>
+<body>
+  <div class="dot-field" aria-hidden="true"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="LinkHUB　零式　MINI MAX簡易エディタ">
+        <span class="brand-main">LinkHUB　零式</span>
+        <span class="brand-sub">MINI MAX簡易エディタ</span>
+      </div>
+      <div class="engine-controls">
+        <div class="engine-pill" id="engineStatus">
+          <span class="status-dot"></span>
+          <span>確認中</span>
+        </div>
+        <span class="engine-meta" id="engineMeta"></span>
+        <button class="button compact" id="refreshButton" type="button">画面更新</button>
+        <button class="button compact" id="restartButton" type="button">エンジン再起動</button>
+      </div>
+    </header>
+
+    <div class="notice warn hidden" id="externalNotice">
+      外部起動の ComfyUI に接続中です。GENSO 推奨フラグで起動されていない可能性があります。
+    </div>
+
+    <main>
+      <section class="setup card hidden" id="setupCard">
+        <div class="eyebrow">SETUP</div>
+        <h1>生成モデルを配置してください</h1>
+        <p class="lead">必須ファイルが揃うと生成画面が開きます。モデルのダウンロード自体は GENSO から行いません。</p>
+        <div class="model-columns">
+          <div>
+            <h2>必須</h2>
+            <div class="model-list" id="requiredModels"></div>
+          </div>
+          <div>
+            <h2>任意</h2>
+            <div class="model-list" id="optionalModels"></div>
+          </div>
+        </div>
+        <div class="setup-footer">
+          <code id="modelRoot"></code>
+          <button class="button primary" id="reloadModels" type="button">モデル再読込</button>
+        </div>
+      </section>
+
+      <div class="workspace hidden" id="workspace">
+        <section class="composer">
+          <nav class="mode-tabs" aria-label="生成モード">
+            <button class="mode-tab active" data-mode="t2va" type="button"><span>01</span>文章から</button>
+            <button class="mode-tab" data-mode="fl2va" type="button"><span>02</span>画像を動かす</button>
+            <button class="mode-tab" data-mode="ref2va" type="button"><span>03</span>参照して作る</button>
+            <button class="mode-tab" data-mode="mannequin" type="button"><span>04</span>マネキン</button>
+          </nav>
+
+          <div class="mode-summary card">
+            <div class="eyebrow" id="modeEyebrow">TEXT TO VIDEO + AUDIO</div>
+            <h1 id="modeTitle">文章から映像と音を描く</h1>
+            <p id="modeHint">英語で、シーン全体→ショット時系列→カメラ→音声の順に書くとよく効きます。音を指定しないと動画内容から推測された音が付きます。</p>
+          </div>
+
+          <section class="card mode-panel hidden" id="imagePanel">
+            <div class="section-heading">
+              <div><div class="eyebrow">KEYFRAME</div><h2>キーフレーム</h2></div>
+              <button class="button compact" id="matchImageSize" type="button">画像に合わせる</button>
+            </div>
+            <div class="upload-grid two">
+              <label class="dropzone" data-drop-target="first">
+                <input type="file" id="firstFrameInput" accept="image/*">
+                <span class="drop-plus">＋</span><strong>開始フレーム</strong><small>ドロップ または 選択</small>
+              </label>
+              <div class="file-preview empty" id="firstFramePreview">未選択</div>
+            </div>
+            <details class="subdetails">
+              <summary>終了フレーム（任意）</summary>
+              <div class="upload-grid two details-body">
+                <label class="dropzone" data-drop-target="last">
+                  <input type="file" id="lastFrameInput" accept="image/*">
+                  <span class="drop-plus">＋</span><strong>終了フレーム</strong><small>FL2V の終点</small>
+                </label>
+                <div class="file-preview empty" id="lastFramePreview">未選択</div>
+              </div>
+              <button class="button" id="loopButton" type="button">開始と同じ画像にする（ループ動画）</button>
+            </details>
+            <p class="micro-note">集中線・ビクビク線・浮かぶハートなどの漫画的表現は動画化に失敗しやすいです。入力画像から除いておくのが安全です。</p>
+          </section>
+
+          <section class="card mode-panel hidden" id="referencePanel">
+            <div class="mannequin-intro hidden" id="mannequinIntro">
+              <div class="eyebrow">MANNEQUIN MOTION</div>
+              <p>MMD 等のマネキン動画の動きを、キャラ設定画のキャラクターで描き直します。1つのモーションを複数キャラに使い回せます。</p>
+            </div>
+            <div class="reference-group">
+              <div class="section-heading">
+                <div><div class="eyebrow">PICTURE</div><h2 id="refImageTitle">参照画像 <span>0 / 9</span></h2></div>
+                <label class="button compact file-button">画像を追加<input type="file" id="refImageInput" accept="image/*" multiple></label>
+              </div>
+              <div class="file-chips" id="refImages"></div>
+              <small id="refImageGuide">正面・背面・顔など、最大9枚</small>
+            </div>
+            <div class="reference-group">
+              <div class="section-heading">
+                <div><div class="eyebrow">VIDEO</div><h2 id="refVideoTitle">参照動画 <span>0 / 3</span></h2></div>
+                <label class="button compact file-button">動画を追加<input type="file" id="refVideoInput" accept="video/*" multiple></label>
+              </div>
+              <div class="file-chips stacked" id="refVideos"></div>
+              <small>選択後に24fps・生成解像度相当・最大15秒へ自動変換します</small>
+            </div>
+            <div class="reference-group" id="refAudioGroup">
+              <div class="section-heading">
+                <div><div class="eyebrow">AUDIO</div><h2>参照音声 <span id="refAudioCount">0 / 3</span></h2></div>
+                <label class="button compact file-button">音声を追加<input type="file" id="refAudioInput" accept="audio/*" multiple></label>
+              </div>
+              <div class="file-chips stacked" id="refAudios"></div>
+              <label class="check-row"><input type="checkbox" id="alignAudio" checked><span>尺を音声に合わせる</span></label>
+            </div>
+            <div class="body-options hidden" id="bodyOptions">
+              <div class="eyebrow">BODY PROPORTION</div>
+              <label><input type="radio" name="bodyType" value="keep" checked>マネキンの体型のまま</label>
+              <label><input type="radio" name="bodyType" value="chibi">ちび・子供体型に上書き</label>
+              <button class="button compact" id="regenerateMannequin" type="button">プロンプト再生成</button>
+            </div>
+            <div class="field compact-field" id="refImageSizeField">
+              <label>参照画像サイズ</label>
+              <div class="segmented">
+                <label><input type="radio" name="refImageSize" value="match" checked><span>match · 高速</span></label>
+                <label><input type="radio" name="refImageSize" value="max"><span>max · 高精度</span></label>
+              </div>
+              <div class="notice warn hidden" id="maxRefWarning">似せる力は上がりますが生成時間が数倍〜十数倍になります（実測: 画像3枚 max で2時間33分）</div>
+            </div>
+          </section>
+
+          <section class="card prompt-card">
+            <div class="section-heading prompt-heading">
+              <div><div class="eyebrow">PROMPT</div><h2>演出指示</h2></div>
+              <select id="templateSelect" aria-label="テンプレート">
+                <option value="">テンプレート ▾</option>
+              </select>
+            </div>
+            <div class="prompt-tools">
+              <button class="chip-button translator-button" id="translatePrompt" type="button" title="台詞・参照タグ・構造を固定し、翻訳可能な部分だけをローカルOllamaで英語へ変換">日本語 → 英語</button>
+              <button class="chip-button" id="insertDialogue" type="button">台詞を挿入</button>
+              <button class="chip-button" id="insertSilence" type="button">無音指定</button>
+              <button class="chip-button" id="insertAmbience" type="button">環境音のみ</button>
+              <button class="chip-button ref-tool hidden" id="insertDeclaration" type="button">参照の宣言文</button>
+              <button class="chip-button ref-tool hidden" id="insertSubtitle" type="button">日本語字幕ブロック</button>
+              <button class="chip-button ref-tool hidden" id="insertLipSync" type="button">口パク強化</button>
+            </div>
+            <textarea id="prompt" rows="12" placeholder="Describe the scene, motion, camera, dialogue, and sound in English."></textarea>
+          </section>
+
+          <section class="card settings-card">
+            <div class="eyebrow">CANVAS & DURATION</div>
+            <div class="settings-grid canvas-settings-grid">
+              <div class="field"><label for="aspectRatio">比率</label><select id="aspectRatio">
+                <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option>
+                <option value="3:4">3:4</option><option value="4:3">4:3</option>
+                <option value="source" id="sourceAspectOption" hidden>入力画像</option>
+              </select></div>
+              <div class="field"><label for="quality">品質</label><select id="quality">
+                <option value="draft" selected>下書き（高速）</option><option value="standard">標準</option><option value="high">高精細</option>
+              </select></div>
+              <div class="field"><label for="length">尺</label><select id="length">
+                <option value="39">1.6秒 · 39f</option><option value="56">2.3秒 · 56f</option>
+                <option value="73">3.0秒 · 73f</option><option value="90">3.8秒 · 90f</option>
+                <option value="107" selected>4.5秒 · 107f</option><option value="124">5.2秒 · 124f</option>
+                <option value="209">8.7秒 · 209f</option><option value="311">13.0秒 · 311f</option>
+                <option value="362">15.1秒 · 362f</option>
+              </select></div>
+              <div class="field"><label for="seed">シード</label><input id="seed" type="number" min="0" max="281474976710655" placeholder="ランダム"></div>
+            </div>
+            <div class="resolution-line"><strong id="resolutionLabel">640 × 352</strong><span id="durationLabel">5.2秒 / 124フレーム</span></div>
+            <p class="micro-note hidden" id="aspectMatchNote"></p>
+            <div class="notice warn hidden" id="resolutionWarning">8GB GPU では非常に時間がかかるか失敗する可能性があります</div>
+          </section>
+
+          <section class="card lora-card">
+            <div class="section-heading">
+              <div><div class="eyebrow">LORA</div><h2>追加学習モデル</h2></div>
+              <span class="count-label" id="loraCount">0 選択</span>
+            </div>
+            <p class="micro-note">MiniMax-H3 対応として登録されたLoRAだけを表示します。</p>
+            <div class="lora-list" id="loraList"></div>
+            <div id="loraWarnings"></div>
+          </section>
+
+          <details class="card advanced-card">
+            <summary><span><span class="eyebrow">ADVANCED</span>詳細設定</span><span>›</span></summary>
+            <div class="advanced-body">
+              <label class="check-row"><input type="checkbox" id="customSize"><span>カスタムサイズを使う</span></label>
+              <div class="settings-grid two">
+                <div class="field"><label for="customWidth">幅（32の倍数）</label><input id="customWidth" type="number" value="864" step="32" min="32"></div>
+                <div class="field"><label for="customHeight">高さ（32の倍数）</label><input id="customHeight" type="number" value="480" step="32" min="32"></div>
+                <div class="field"><label for="steps">ステップ</label><input id="steps" type="number" value="8" min="1" max="100"></div>
+                <div class="field"><label for="sampler">サンプラー</label><select id="sampler"><option>res_multistep</option><option>euler</option><option>er_sde</option></select></div>
+                <div class="field"><label for="scheduler">スケジューラ</label><input id="scheduler" value="simple"></div>
+                <div class="field"><label for="textEncoder">テキストエンコーダー</label><select id="textEncoder"></select></div>
+                <div class="field"><label for="outName">出力名</label><input id="outName" value="genso"></div>
+                <div class="field"><label for="shiftVideo">Video shift</label><input id="shiftVideo" type="number" value="12" step="0.1"></div>
+                <div class="field"><label for="shiftAudio">Audio shift</label><input id="shiftAudio" type="number" value="6" step="0.1"></div>
+              </div>
+              <label class="check-row"><input type="checkbox" id="gguf"><span>GGUF Q3 DiT を使う（RAM軽量・約1.78倍遅い）</span></label>
+            </div>
+          </details>
+
+          <section class="generate-card card">
+            <div>
+              <div class="eyebrow">CURRENT SETTINGS</div>
+              <div class="estimate" id="estimate">下書き · 640×352</div>
+              <small id="lengthNote">所要時間はメモリ退避状況で大きく変わるため予測しません</small>
+            </div>
+            <button class="button primary generate" id="generateButton" type="button"><span>生成する</span><span>→</span></button>
+          </section>
+        </section>
+
+        <aside class="results">
+          <section class="player-card card">
+            <div class="section-heading">
+              <div><div class="eyebrow">OUTPUT</div><h2>生成結果</h2></div>
+              <button class="button compact" id="openFolder" type="button">フォルダを開く</button>
+            </div>
+            <div class="player-shell" id="playerShell">
+              <video id="resultVideo" controls preload="metadata" class="hidden"></video>
+              <div class="player-empty" id="playerEmpty"><span>▶</span><p>生成した動画をここで確認できます</p></div>
+            </div>
+            <div class="qc-result hidden" id="qcResult"></div>
+          </section>
+
+          <section class="progress-card card" id="progressCard">
+            <div class="section-heading">
+              <div><div class="eyebrow">PROGRESS</div><h2 id="progressStage">待機中</h2></div>
+              <button class="button compact danger hidden" id="interruptButton" type="button">中断</button>
+            </div>
+            <div class="progress-meta"><span id="stepLabel">—</span><span id="timeLabel">準備ができています</span></div>
+            <div class="progress-track"><div class="progress-halo" id="progressHalo"></div><div class="progress-fill" id="progressFill"></div></div>
+            <p class="micro-note">処理時間はVRAM・RAMへの退避量で大きく変動します。進行中は経過時間だけを表示します。</p>
+            <div class="notice warn hidden" id="slowWarning">1ステップが長時間かかっています。急ぐ場合は中断し、品質を「下書き（高速）」へ切り替えてください。</div>
+            <div class="error-guide hidden" id="errorGuide"></div>
+          </section>
+
+          <section class="history-card card">
+            <div class="section-heading">
+              <div><div class="eyebrow">HISTORY</div><h2>生成履歴</h2></div>
+              <button class="icon-button" id="reloadHistory" type="button" title="履歴を再読込">↻</button>
+            </div>
+            <div class="history-grid" id="historyGrid"><div class="history-empty">履歴を読み込んでいます…</div></div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <footer><span>LinkHUB</span><span>零式 · MINI MAX簡易エディタ</span></footer>
+  </div>
+  <div class="editor-overlay hidden" id="editorOverlay" aria-hidden="true">
+    <section class="structured-editor" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <header class="editor-header">
+        <div>
+          <div class="eyebrow" id="editorEyebrow">TEMPLATE BUILDER</div>
+          <h2 id="editorTitle">テンプレートを組み立てる</h2>
+          <p id="editorDescription"></p>
+        </div>
+        <button class="editor-close" id="editorClose" type="button" aria-label="閉じる">×</button>
+      </header>
+      <form id="editorForm">
+        <div class="editor-layout">
+          <div class="editor-fields" id="editorFields"></div>
+          <aside class="editor-preview hidden" id="editorPreviewPanel">
+            <div class="eyebrow">LIVE PREVIEW</div>
+            <pre id="editorPreview"></pre>
+          </aside>
+        </div>
+        <footer class="editor-actions">
+          <span id="editorHint">すべての項目を一度に入力できます</span>
+          <div>
+            <button class="button" id="editorCancel" type="button">キャンセル</button>
+            <button class="button primary" id="editorSubmit" type="submit">プロンプトへ反映</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+  <script src="/genso/web/js/app.js?v=20260816-3"></script>
+</body>
+</html>

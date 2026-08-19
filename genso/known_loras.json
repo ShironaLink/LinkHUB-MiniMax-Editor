@@ -1,0 +1,45 @@
+{
+  "minimax_h3_turbo_4step_ckpt600_ema_V4.safetensors": {
+    "kind": "turbo",
+    "modes": ["t2va", "fl2va", "ref2va"],
+    "steps": 8,
+    "sampler": "res_multistep",
+    "default_strength": 1.0,
+    "note": "本機検証済みの標準高速化LoRA"
+  },
+  "minimax_h3_fl2v*turbo_4step*": {
+    "kind": "turbo",
+    "modes": ["t2va", "fl2va"],
+    "steps": 4,
+    "sampler": "er_sde",
+    "default_strength": 0.75,
+    "note": "LightX2V FL2V 4step用（強度0.75・er_sde）"
+  },
+  "minimax_h3_fl2v*turbo_8step*": {
+    "kind": "turbo",
+    "modes": ["t2va", "fl2va"],
+    "steps": 8,
+    "sampler": "euler",
+    "default_strength": 1.0
+  },
+  "minimax_h3_ref2v_turbo_4step*": {
+    "kind": "turbo",
+    "modes": ["ref2va"],
+    "steps": 4,
+    "sampler": "euler",
+    "default_strength": 1.0,
+    "note": "LightX2V Ref2V 4step用（強度1.0・euler・544p推奨）"
+  },
+  "HMNSFW_AIO_V2.safetensors": {
+    "kind": "content",
+    "modes": ["t2va", "fl2va", "ref2va"],
+    "default_strength": 1.0,
+    "note": "MiniMax-H3 NSFW AIO V2（ファイルヘッダーでH3互換確認済み）"
+  },
+  "*minimax*h3*looping*": {
+    "kind": "style",
+    "modes": ["fl2va", "ref2va"],
+    "default_strength": 1.0,
+    "note": "Looping Sketch Anime（公式推奨0.75〜1.25、Turbo併用時は増量候補）"
+  }
+}

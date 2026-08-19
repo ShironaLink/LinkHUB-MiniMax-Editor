@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Generated at runtime: holds the user's own ComfyUI path
+config.json
+
+# Logs
+engine.log
+engine-test*.log
+
+# Build output
+build_exe/
+build/
+dist/
+*.spec

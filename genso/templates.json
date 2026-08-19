@@ -1,0 +1,38 @@
+[
+  {
+    "id": "t2va_storyboard",
+    "label": "ストーリーボード型",
+    "modes": ["t2va"],
+    "body": "{{scene_style}}, {{scene_summary}}.\n\nStoryboard (each shot is an independent scene, quick cuts):\n[0.0s - {{t1}}s] Shot 1: {{shot1}}\n[{{t1}}s - {{t2}}s] Shot 2: {{shot2}}\n[{{t2}}s - {{t3}}s] Shot 3: {{shot3}}\n\nCamera: {{camera_notes}}. No dissolves.\nAudio: {{audio_notes}}."
+  },
+  {
+    "id": "i2v_dialogue",
+    "label": "画像＋動き＋台詞",
+    "modes": ["fl2va"],
+    "body": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] {{style_and_transcription_of_input_image}}.\nPreserve exactly her face, body proportions, colors, clothing construction, and background.\n\n{{motion_description}}\n\nThe on-screen {{character}} (S1) says with precise synchronized mouth movement:\n<d>[Japanese] {{serifu}}</d>\n\nMaintain one character only, stable facial identity, stable anatomy, consistent clothing\nand background throughout. No cuts, camera movement, new objects, additional characters,\nduplicated limbs, facial morphing, costume changes, flickering, or style shifts.\n\noverall_soundscape: {{soundscape}}\nnon_diegetic_music: {{bgm_or_NA}}"
+  },
+  {
+    "id": "ref2va_declaration",
+    "label": "参照宣言スケルトン",
+    "modes": ["ref2va"],
+    "body": "<Subject 1> is the {{subject_desc}} in <Picture 1>{{, <Picture 2> and <Picture 3>}}.\nRetention: <Subject 1> is attribute_transfer.\n{{<Audio 1> is the voice-timbre reference for <Subject 1> (S1).}}\n{{Use <Picture 1> as the first frame, exactly as it is.}}\n{{Apply the motion from <Video 1>.}}"
+  },
+  {
+    "id": "ref2va_subtitle",
+    "label": "日本語字幕ブロック",
+    "modes": ["ref2va"],
+    "body": "From {{start}} to {{end}}, <Subject 1> (S1) says in the same referenced voice:\n<d>[Japanese] {{serifu}}</d>\nAt exactly the same time, display the Japanese subtitle \"{{serifu}}\"\nat the bottom center of the screen. The subtitle appears when the first\nsyllable begins and disappears immediately after the final syllable ends.\n\nAll subtitles use a clean bold Japanese sans-serif typeface. The text is\nsolid white with a clearly defined medium-thick black outline, no background\nbox, no shadow, and no colored decoration. Horizontally center every subtitle\nas a complete block, within the lower safe area, approximately seven percent\nabove the bottom edge. Maintain identical font size, outline width, alignment,\nand vertical position across all subtitle changes. Render the Japanese\ncharacters exactly as written. No translation, romanization, speaker labels,\nquotation marks, or additional text anywhere else."
+  },
+  {
+    "id": "ref2va_lipsync",
+    "label": "口パク強化",
+    "modes": ["ref2va"],
+    "body": "Her mouth moves precisely with every Japanese syllable she speaks. Her jaw\nand lips open and close in exact synchronization with the words, opening\nclearly on vowels and closing fully during pauses. Her cheeks, chin, and\nthroat move naturally with her speech. She blinks naturally."
+  },
+  {
+    "id": "mannequin_chibi",
+    "label": "マネキン · ちび体型",
+    "modes": ["mannequin"],
+    "body": "Apply the mannequin's motion from the input video <Video 1> to the character in {{img_refs}}.\nPrioritize <Picture 1>'s body proportions over the mannequin's —\ndo not follow the mannequin's adult proportions.\n<Picture 1> has a chibi/child-like body type: large head,\nshort torso, and short limbs. Redraw the character to match\nthis proportion, not the mannequin's.\nDraw hair and clothing from scratch based on <Picture 1>,\nwith natural physics-based movement (swaying, bouncing)\nthat follows the motion.\nRender in Japanese cel-shaded anime style, limited animation\nat 24fps (on 2s / on 3s timing), thick outlines, flat coloring.\nFollow the input video's motion and camera work exactly."
+  }
+]
