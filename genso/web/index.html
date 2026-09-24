@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LinkHUB　零式　MINI MAX簡易エディタ</title>
-  <link rel="stylesheet" href="/genso/web/css/style.css?v=20260816-3">
+  <link rel="stylesheet" href="/genso/web/css/style.css?v=20260925-1">
 </head>
 <body>
   <div class="dot-field" aria-hidden="true"></div>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand" aria-label="LinkHUB　零式　MINI MAX簡易エディタ">
-        <span class="brand-main">LinkHUB　零式</span>
+        <img class="brand-logo" src="/genso/web/img/linkhub-wordmark.png?v=20260925-1" alt="LinkHUB" width="615" height="132">
+        <span class="brand-main">零式</span>
         <span class="brand-sub">MINI MAX簡易エディタ</span>
       </div>
       <div class="engine-controls">
@@ -22,6 +23,7 @@
         <span class="engine-meta" id="engineMeta"></span>
         <button class="button compact" id="refreshButton" type="button">画面更新</button>
         <button class="button compact" id="restartButton" type="button">エンジン再起動</button>
+        <button class="button compact" id="stopButton" type="button">エンジン停止</button>
       </div>
     </header>
 
@@ -177,6 +179,7 @@
             </div>
             <div class="resolution-line"><strong id="resolutionLabel">640 × 352</strong><span id="durationLabel">5.2秒 / 124フレーム</span></div>
             <p class="micro-note hidden" id="aspectMatchNote"></p>
+            <div class="notice warn hidden" id="keyframeAspectWarning"></div>
             <div class="notice warn hidden" id="resolutionWarning">8GB GPU では非常に時間がかかるか失敗する可能性があります</div>
           </section>
 
@@ -286,6 +289,7 @@
     </section>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
-  <script src="/genso/web/js/app.js?v=20260816-3"></script>
+  <script src="/genso/web/js/frame-crop.js?v=20260922-2"></script>
+  <script src="/genso/web/js/app.js?v=20260922-2"></script>
 </body>
 </html>

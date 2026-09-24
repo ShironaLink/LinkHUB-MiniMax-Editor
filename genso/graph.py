@@ -179,6 +179,7 @@ def build_graph(settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 "inputs": {"image": settings["last_frame"]},
             }
             conditioning_inputs["last_frame"] = ["22", 0]
+        _add_guide_clip(graph, settings.get("guide_clip") or [])
         return graph
 
     conditioning_inputs.update(
@@ -247,3 +248,48 @@ def build_graph(settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
         }
         graph["11"]["inputs"]["conditioning"] = ["22", 0]
     return graph
+
+
+# Node ids for the continuation clip, clear of the fixed ids above (1-11, the
+# reference loaders at 20-28/40-52/60-61 and the LoRA chain at 30+).
+GUIDE_LOAD_BASE = 70
+GUIDE_BATCH_BASE = 80
+GUIDE_NODE_ID = "90"
+
+
+def _add_guide_clip(graph: dict[str, dict[str, Any]], names: list[str]) -> None:
+    """Anchor the previous segment's last frames at frames 0.. of this one.
+
+    RENSO hands a chain over with a single tail frame, and the next segment then
+    re-invents line weight and motion from that one picture: measured seam jumps
+    were 8-10x the in-segment frame-to-frame difference. Core MiniMaxH3AddGuide
+    accepts a short clip (5, 22, 39... frames) as extra keyframe rows at a frame
+    index, so the model sees how the previous segment was moving and drawn.
+
+    Example: names=["t1.png", ..., "t5.png"] (5 frames of 832x480) adds
+    LoadImage x5 -> ImageBatch x4 -> MiniMaxH3AddGuide(frame_idx=0) and points
+    the guider at it. An empty list leaves the graph untouched.
+    """
+    if not names:
+        return
+    loads = []
+    for index, name in enumerate(names):
+        key = str(GUIDE_LOAD_BASE + index)
+        graph[key] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        loads.append([key, 0])
+    batch = loads[0]
+    for index, item in enumerate(loads[1:]):
+        key = str(GUIDE_BATCH_BASE + index)
+        graph[key] = {"class_type": "ImageBatch", "inputs": {"image1": batch, "image2": item}}
+        batch = [key, 0]
+    graph[GUIDE_NODE_ID] = {
+        "class_type": "MiniMaxH3AddGuide",
+        "inputs": {
+            "positive": graph["11"]["inputs"]["conditioning"],
+            "latent": ["7", 1],
+            "vae": ["5", 0],
+            "image": batch,
+            "frame_idx": 0,
+        },
+    }
+    graph["11"]["inputs"]["conditioning"] = [GUIDE_NODE_ID, 0]

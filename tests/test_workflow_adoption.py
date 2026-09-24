@@ -70,12 +70,12 @@ class WorkflowAdoptionTests(unittest.TestCase):
         self.assertIn('text_encoder: $("#textEncoder").value', script)
 
     def test_restart_rewrites_stale_external_shell_mode(self):
+        # The page cannot await its own restart (the engine serving it dies), so
+        # the shell reopens the window and marks it as owned.
         script = (ROOT / "genso" / "web" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn(
-            'nextUrl.searchParams.set("shell", result.external === true ? "external" : "owned")',
-            script,
-        )
-        self.assertIn("location.replace(nextUrl.toString())", script)
+        wrapper = (ROOT / "wrapper" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("window.pywebview.api.restart_engine();", script)
+        self.assertIn('?shell=owned")', wrapper)
 
     def test_frontend_can_reload_without_restarting_engine(self):
         html = (ROOT / "genso" / "web" / "index.html").read_text(encoding="utf-8")
@@ -92,11 +92,11 @@ class WorkflowAdoptionTests(unittest.TestCase):
         html = (ROOT / "genso" / "web" / "index.html").read_text(encoding="utf-8")
         wrapper = (ROOT / "wrapper" / "app.py").read_text(encoding="utf-8")
         self.assertIn(f"<title>{display_name}</title>", html)
-        self.assertIn(f'WINDOW_TITLE = "{display_name}"', wrapper)
+        self.assertIn(f'"title": "{display_name}"', wrapper)
 
     def test_window_height_matches_obs_16_by_9_capture(self):
         wrapper = (ROOT / "wrapper" / "app.py").read_text(encoding="utf-8")
-        self.assertIn("width=1280,\n        height=750,", wrapper)
+        self.assertIn('"size": (1280, 750),', wrapper)
 
     def test_prompt_drafts_are_isolated_by_mode(self):
         script = (ROOT / "genso" / "web" / "js" / "app.js").read_text(encoding="utf-8")
@@ -120,7 +120,10 @@ class WorkflowAdoptionTests(unittest.TestCase):
         self.assertIn('value="source" id="sourceAspectOption"', html)
         self.assertIn("function dimensionsForSourceAspect", script)
         self.assertIn('$("#aspectRatio").value = "source"', script)
-        self.assertIn('if (which === "first") {\n      matchFirstImage(false);', script)
+        # Keyframes are cropped to the canvas in a dialog (frame-crop.js)
+        # instead of silently switching the aspect ratio.
+        self.assertIn("GensoFrameCrop.prepare(file, width, height)", script)
+        self.assertIn("frame-crop.js?v=", html)
         self.assertRegex(css, r"\.file-preview img\s*\{[^}]*object-fit:\s*contain")
         self.assertRegex(css, r"\.file-chip img\s*\{[^}]*object-fit:\s*contain")
         self.assertRegex(css, r"\.history-item video\s*\{[^}]*object-fit:\s*contain")

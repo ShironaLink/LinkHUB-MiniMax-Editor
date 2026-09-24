@@ -40,6 +40,11 @@ from .nodes_override import (
     GensoH3ReferenceToVideo,
 )
 from .qc import inspect_video
+
+# The optional RENSO add-on lives in genso/renso/. Checked by file presence, not
+# by catching ImportError, so a real bug inside an installed RENSO still fails
+# loudly instead of silently disabling it.
+RENSO_INSTALLED = (Path(__file__).resolve().parent / "renso" / "__init__.py").is_file()
 from .prompt_compiler import (
     PromptCompileError,
     build_translation_plan,
@@ -305,6 +310,17 @@ async def _parse_generation(request: web.Request) -> dict[str, Any]:
         payload = await request.json()
     except Exception as exc:
         raise ValueError("JSON リクエストを読み取れません") from exc
+    return parse_settings(payload)
+
+
+def parse_settings(payload: Any) -> dict[str, Any]:
+    """Validate and normalize one generation request into engine settings.
+
+    Split out of the HTTP handler so the chain runner (`renso`) can build the
+    exact same dict without posting to itself. The two callers must never drift:
+    a chain that validated its segments under different rules than the
+    single-shot editor would fail halfway through a two-hour batch.
+    """
     if not isinstance(payload, dict):
         raise ValueError("リクエスト形式が不正です")
 
@@ -587,6 +603,17 @@ async def genso_generate(request: web.Request) -> web.Response:
             return _error("生成キューを確認できません", 503)
         if queue.get("queue_running") or queue.get("queue_pending"):
             return _error("別の生成ジョブが実行中です。完了または中断を待ってください", 409)
+        # A chain owns the queue for its whole run, not only while a segment is
+        # sampling. Without this a single-shot generation could slip into the
+        # gap between two segments and make the chain fail its own queue check.
+        # Imported here rather than at module scope: `renso` imports helpers
+        # defined further down this file. RENSO is an optional add-on, so the
+        # check only applies when it is installed.
+        if RENSO_INSTALLED:
+            from .renso import runner as renso_runner
+
+            if renso_runner.is_active():
+                return _error("連創型が実行中です。完了または停止を待ってください", 409)
         devices = stats.get("devices", [])
         if devices:
             vram_free = float(devices[0].get("vram_free", 0)) / GIB
@@ -855,3 +882,10 @@ async def genso_templates(_request: web.Request) -> web.Response:
             return _json(json.load(handle))
     except Exception as exc:
         return _error(f"テンプレートを読めません: {exc}", 500)
+
+
+# Registered last on purpose: the chain routes import helpers defined above, so
+# this module must be fully executed before `renso` is loaded.
+# RENSO (chained generation) ships separately; the editor runs without it.
+if RENSO_INSTALLED:
+    from . import renso  # noqa: E402,F401

@@ -15,3 +15,9 @@ build_exe/
 build/
 dist/
 *.spec
+
+# Local backups
+*.bak
+
+# RENSO add-on (separate repository) saves plans here
+renso_plans/

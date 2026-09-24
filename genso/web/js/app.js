@@ -739,6 +739,7 @@ function updateResolution() {
   if (sourceMatched) {
     aspectNote.textContent = `入力 ${state.firstFrame.width}×${state.firstFrame.height} の比率 ${sourceAspectText(state.firstFrame.width, state.firstFrame.height)} を維持`;
   }
+  paintKeyframeAspectWarning(width, height);
   updateEstimate();
 }
 
@@ -802,6 +803,42 @@ function updateEstimate() {
   } else {
     note.textContent = `VRAM ${vram.toFixed(0)}GB で安定して回せる範囲です（1フレーム${tokens}トークン / 上限${SAFE_TOKENS_PER_FRAME}、${frames}/${SAFE_LENGTH}フレーム）`;
     note.classList.remove("warn");
+  }
+}
+
+/* The engine fits the two keyframes differently — the first is stretched to
+   the canvas (crop="disabled") and the last is centre-cropped to it
+   (crop="center", nodes_minimax_h3.py:146,151). Dropping a first frame already
+   sets the canvas to its aspect, but nothing ever checked the LAST frame, so a
+   tail of a different shape was silently trimmed. */
+const KEYFRAME_ASPECT_TOLERANCE = 0.02;
+
+function keyframeAspectOff(frame, width, height) {
+  if (!frame?.width || !frame?.height || !width || !height) return false;
+  return Math.abs(Math.log((frame.width / frame.height) / (width / height)))
+    > KEYFRAME_ASPECT_TOLERANCE;
+}
+
+function paintKeyframeAspectWarning(width, height) {
+  const node = $("#keyframeAspectWarning");
+  if (!node) return;
+  const messages = [];
+  if (keyframeAspectOff(state.firstFrame, width, height)) {
+    messages.push(
+      `開始フレーム ${state.firstFrame.width}×${state.firstFrame.height} は `
+      + `${width}×${height} へ引き伸ばされます（縦横が歪みます）`
+    );
+  }
+  if (keyframeAspectOff(state.lastFrame, width, height)) {
+    messages.push(
+      `終了フレーム ${state.lastFrame.width}×${state.lastFrame.height} は `
+      + `中央を切り抜いて ${width}×${height} にされます（端が切れます）`
+    );
+  }
+  node.classList.toggle("hidden", messages.length === 0);
+  if (messages.length) {
+    node.innerHTML = messages.map((text) => escapeHtml(text)).join("<br>")
+      + '<br>「画像に合わせる」で比率を揃えられます。';
   }
 }
 
@@ -936,18 +973,14 @@ async function imageDimensions(file) {
 async function setFrame(which, file) {
   if (!file) return;
   try {
-    toast(`${file.name} をアップロード中…`, 60000);
-    const dimensions = await imageDimensions(file);
-    const name = await uploadFile(file);
+    const [width, height] = getDimensions();
+    const prepared = await GensoFrameCrop.prepare(file, width, height);
+    if (!prepared) return;
+    const dimensions = { width, height };
+    const name = await uploadFile(prepared);
     state[which === "first" ? "firstFrame" : "lastFrame"] = { name, originalName: file.name, ...dimensions };
     renderFrame(which);
-    if (which === "first") {
-      matchFirstImage(false);
-      const [width, height] = getDimensions();
-      toast(`${file.name} を追加し、比率を ${width}×${height} に合わせました`);
-    } else {
-      toast(`${file.name} を追加しました`);
-    }
+    toast(`${width}×${height} の画像を追加しました`);
   } catch (error) { toast(error.message, 6000); }
 }
 
@@ -1124,6 +1157,21 @@ async function generate() {
   try {
     button.disabled = true;
     button.firstElementChild.textContent = "準備中…";
+    if (state.mode === "fl2va") {
+      const [width, height] = getDimensions();
+      for (const which of ["first", "last"]) {
+        const key = which === "first" ? "firstFrame" : "lastFrame";
+        const item = state[key];
+        if (!item || (item.width === width && item.height === height)) continue;
+        const response = await fetch(inputViewUrl(item.name));
+        if (!response.ok) throw new Error("画像を読み込めませんでした");
+        const file = new File([await response.blob()], "keyframe.png", { type: "image/png" });
+        const prepared = await GensoFrameCrop.prepare(file, width, height);
+        if (!prepared) return;
+        state[key] = { ...item, name: await uploadFile(prepared), width, height };
+        renderFrame(which);
+      }
+    }
     if (["ref2va", "mannequin"].includes(state.mode)) await ensureReferenceVideos();
     const payload = generationPayload();
     validateBeforeGenerate(payload);
@@ -1518,20 +1566,39 @@ async function restartEngine() {
     const external = new URLSearchParams(location.search).get("shell") === "external";
     if (external && !window.confirm("外部で起動された ComfyUI を終了して、GENSO 推奨設定で再起動します。続けますか？")) return;
     $("#restartButton").disabled = true;
+    $("#stopButton").disabled = true;
     $("#engineStatus").innerHTML = '<span class="status-dot"></span><span>再起動中</span>';
-    const result = await window.pywebview.api.restart_engine();
-    if (!result.ok) throw new Error(result.error || "再起動に失敗しました");
-    // The page may have originally attached to an external ComfyUI. Once the
-    // wrapper restarts that process it becomes wrapper-owned, so carrying the
-    // stale `shell=external` query through location.reload() leaves a false
-    // warning on every subsequent restart.
-    const nextUrl = new URL(location.href);
-    nextUrl.searchParams.set("shell", result.external === true ? "external" : "owned");
-    location.replace(nextUrl.toString());
+    $("#engineMeta").textContent = "エンジンが戻ると画面が自動で開き直します（初回は15秒ほど）";
+    // Fire and forget, and navigate from nowhere here: restarting kills the
+    // server that serves this page, so awaiting a reply cannot work — the
+    // pending callback dies with the document and pywebview then crashes the
+    // app trying to resolve it. The shell reopens the window itself, with the
+    // `shell=owned` query it is now entitled to.
+    window.pywebview.api.restart_engine();
   } catch (error) {
     toast(error.message, 7000);
     $("#restartButton").disabled = false;
+    $("#stopButton").disabled = false;
   }
+}
+
+async function stopEngine() {
+  if (!window.pywebview?.api?.stop_engine) {
+    toast("エンジン停止は GENSO のデスクトップウィンドウから利用できます");
+    return;
+  }
+  if (state.currentJob && !window.confirm("生成中です。エンジンを止めると結果は失われます。停止しますか？")) return;
+  // Same reason as restartEngine: this page is served by the engine being
+  // stopped, so there is nothing left to deliver a reply to. The shell shows
+  // its own "stopped" page, which can start the engine again.
+  state.currentJob = null;
+  $("#progressCard").classList.remove("running");
+  $("#interruptButton").classList.add("hidden");
+  $("#stopButton").disabled = true;
+  $("#restartButton").disabled = true;
+  $("#engineStatus").className = "engine-pill";
+  $("#engineStatus").innerHTML = '<span class="status-dot"></span><span>停止中</span>';
+  window.pywebview.api.stop_engine();
 }
 
 function refreshFrontend() {
@@ -1575,6 +1642,7 @@ function bindEvents() {
   $("#reloadModels").addEventListener("click", loadStatus);
   $("#refreshButton").addEventListener("click", refreshFrontend);
   $("#restartButton").addEventListener("click", restartEngine);
+  $("#stopButton").addEventListener("click", stopEngine);
   $("#openFolder").addEventListener("click", async () => { try { await requestJson("/genso/api/open_folder", { method: "POST" }); } catch (error) { toast(error.message); } });
   $("#reloadHistory").addEventListener("click", loadHistory);
   $("#generateButton").addEventListener("click", generate);

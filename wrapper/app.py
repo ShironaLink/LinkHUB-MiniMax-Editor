@@ -26,10 +26,47 @@ try:
 except ImportError:
     raise SystemExit("pywebview がありません。setup.bat を実行してください。")
 
-ROOT = Path(__file__).resolve().parents[1]
+if getattr(sys, "frozen", False):
+    # Packaged as an exe: everything the app needs sits next to the exe, not
+    # inside the bundle. `genso` in particular must stay a real folder on disk
+    # because ComfyUI loads it through a junction.
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.json"
 LOG_PATH = ROOT / "engine.log"
-WINDOW_TITLE = "LinkHUB　零式　MINI MAX簡易エディタ"
+
+# Two apps, one shell. They share an engine, a config file and a custom node;
+# what differs is the page that is opened and the name on the window. Pick with
+# `python wrapper\app.py renso` or GENSO_APP=renso.
+VARIANTS: dict[str, dict[str, Any]] = {
+    "genso": {
+        "title": "LinkHUB　零式　MINI MAX簡易エディタ",
+        "sub": "MINI MAX簡易エディタ",
+        "route": "genso",
+        "size": (1280, 750),
+        "min_size": (980, 700),
+    },
+    "renso": {
+        "title": "LinkHUB　零式　連創型　幻想",
+        "sub": "連創型 幻想 · 連続生成",
+        "route": "renso",
+        # The rail is a horizontal row of cards, so the chain app opens wider
+        # than the single-shot editor or the first two segments are off-screen.
+        "size": (1680, 940),
+        "min_size": (1120, 760),
+    },
+}
+
+
+def _variant_name() -> str:
+    requested = (sys.argv[1] if len(sys.argv) > 1 else os.environ.get("GENSO_APP", "")).strip().lower()
+    return requested if requested in VARIANTS else "genso"
+
+
+VARIANT_NAME = _variant_name()
+VARIANT = VARIANTS[VARIANT_NAME]
+WINDOW_TITLE = VARIANT["title"]
 
 SPLASH = """<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\">
 <style>html,body{height:100%;margin:0;background:#000;color:#fff;font-family:'Yu Gothic UI',sans-serif}
@@ -39,6 +76,10 @@ body{display:grid;place-items:center}.box{text-align:center}.mark{font-size:40px
 @keyframes a{from{transform:translateX(-110%)}to{transform:translateX(330%)}}</style>
 <body><div class=\"box\"><div class=\"mark\">LinkHUB　零式</div><div class=\"sub\">MINI MAX簡易エディタ</div>
 <div class=\"wait\">エンジン起動中…（初回は15秒ほど）</div><div class=\"line\"></div></div></body></html>"""
+
+# Both pages carry the app name in one place, so a single substitution is all
+# the variant needs (a no-op for GENSO itself).
+SPLASH = SPLASH.replace("MINI MAX簡易エディタ", VARIANT["sub"])
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -327,12 +368,81 @@ class WindowApi:
         # Private for the same reason: a public callable would be exported to
         # JS and re-scanned by pywebview on every call.
         self._boot: Any = None
+        # One engine operation at a time. Two overlapping restarts would race
+        # over the same port and the second would report a false failure.
+        self._busy = False
 
     def engine_state(self) -> dict[str, Any]:
         return self.manager.state()
 
+    # Both engine controls destroy the web server that serves the page they
+    # were pressed on, so neither can deliver a return value to the browser:
+    # the document is gone by the time the work finishes and pywebview's
+    # evaluate_js of the pending callback raises JavascriptException on its
+    # worker thread, taking the whole app down (observed 2026-09-22).
+    #
+    # Both therefore answer at once and hand the work to a thread. Python
+    # outlives the page, so Python is what puts the window somewhere sensible
+    # afterwards.
+
     def restart_engine(self) -> dict[str, Any]:
-        return self.manager.restart()
+        if self._busy:
+            return {"ok": True, "started": True, "note": "すでに処理中です"}
+        self._busy = True
+        threading.Thread(target=self._restart_worker, daemon=True).start()
+        return {"ok": True, "started": True}
+
+    def _restart_worker(self) -> None:
+        try:
+            result = self.manager.restart()
+            window = self._window
+            if window is None:
+                return
+            if result.get("ok"):
+                window.load_url(f"{self.manager.base_url}/{VARIANT['route']}?shell=owned")
+            else:
+                window.load_html(
+                    _error_page(result.get("error", "再起動に失敗しました"), result.get("log", ""))
+                )
+        except Exception:
+            window = self._window
+            if window is not None:
+                window.load_html(_error_page("エンジンの再起動に失敗しました", traceback.format_exc()))
+        finally:
+            self._busy = False
+
+    def stop_engine(self) -> dict[str, Any]:
+        """Shut the engine down but leave this window open.
+
+        Generation and any other GPU work compete for the same VRAM, so
+        upscaling or a second tool runs far faster with the engine unloaded.
+        `include_external=True` so an engine the user started outside GENSO is
+        stopped too — otherwise the button would appear to do nothing.
+        """
+        if self._busy:
+            return {"ok": True, "started": True, "note": "すでに処理中です"}
+        self._busy = True
+        threading.Thread(target=self._stop_worker, daemon=True).start()
+        return {"ok": True, "started": True}
+
+    def _stop_worker(self) -> None:
+        try:
+            result = self.manager.stop(include_external=True)
+            window = self._window
+            if window is None:
+                return
+            if result.get("ok"):
+                # The app page cannot be reloaded with the server gone, so the
+                # window gets a page of its own that can start the engine again.
+                window.load_html(STOPPED_PAGE)
+            else:
+                window.load_html(_error_page(result.get("error", "停止に失敗しました")))
+        except Exception:
+            window = self._window
+            if window is not None:
+                window.load_html(_error_page("エンジンの停止に失敗しました", traceback.format_exc()))
+        finally:
+            self._busy = False
 
     def pick_file(self, kind: str = "all") -> dict[str, Any]:
         if self._window is None:
@@ -440,13 +550,37 @@ $("go").addEventListener("click", async () => {
 });
 </script></body></html>"""
 
+SETUP_PAGE = SETUP_PAGE.replace("MINI MAX簡易エディタ", VARIANT["sub"])
+
+
+STOPPED_PAGE = """<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><style>
+html,body{height:100%;margin:0;background:#000;color:#fff;font-family:'Yu Gothic UI',sans-serif}
+body{display:grid;place-items:center}.box{text-align:center}
+.mark{font-size:28px;font-weight:900;letter-spacing:.06em}
+.sub{margin-top:10px;color:#ffffff66;font-size:12px;letter-spacing:.2em}
+p{margin:26px 0 0;color:#ffffffb3;font-size:13px;line-height:1.9}
+button{margin-top:26px;font:inherit;font-size:14px;padding:12px 26px;border-radius:10px;
+cursor:pointer;border:1px solid #3FA9F5;background:#3FA9F5;color:#001523;font-weight:700}
+button:disabled{opacity:.4;cursor:default}
+</style><body><div class=\"box\"><div class=\"mark\">エンジンを停止しました</div>
+<div class=\"sub\">VRAM は解放されています</div>
+<p>他の生成ツールを使い終わったら、ここから再開できます。<br>
+生成した動画とプランは消えていません。</p>
+<button id=\"go\" type=\"button\">エンジンを起動して戻る</button></div><script>
+document.getElementById("go").addEventListener("click", async (event) => {
+  event.target.disabled = true;
+  event.target.textContent = "起動中…（初回は15秒ほど）";
+  await window.pywebview.api.restart_engine();
+});
+</script></body></html>"""
+
 
 def _error_page(message: str, log: str = "") -> str:
     return f"""<!doctype html><html lang=\"ja\"><meta charset=\"utf-8\"><style>
 body{{background:#000;color:#fff;font:14px 'Yu Gothic UI',sans-serif;padding:50px}}
 .card{{max-width:850px;margin:auto;border:1px solid #ffffff20;border-radius:16px;padding:28px;background:#ffffff0d}}
 h1{{font-size:22px}}p{{color:#fcd34d}}pre{{white-space:pre-wrap;color:#ffffff99;background:#080808;padding:16px;border-radius:8px}}
-</style><body><div class=\"card\"><h1>LinkHUB　零式　MINI MAX簡易エディタを起動できませんでした</h1><p>{html.escape(message)}</p>
+</style><body><div class=\"card\"><h1>{html.escape(WINDOW_TITLE)}を起動できませんでした</h1><p>{html.escape(message)}</p>
 <pre>{html.escape(log)}</pre></div></body></html>"""
 
 
@@ -459,9 +593,9 @@ def main() -> None:
     window = webview.create_window(
         WINDOW_TITLE,
         html=SPLASH if configured else SETUP_PAGE,
-        width=1280,
-        height=750,
-        min_size=(980, 700),
+        width=VARIANT["size"][0],
+        height=VARIANT["size"][1],
+        min_size=VARIANT["min_size"],
         js_api=api,
         background_color="#000000",
     )
@@ -477,7 +611,7 @@ def main() -> None:
                 # Pass the ownership state in the URL. Calling the Python JS API
                 # automatically while WebView2 is still finishing navigation can
                 # deadlock pywebview 6.2.1 on WinForms.
-                window.load_url(f"{manager.base_url}/genso?shell={shell_mode}")
+                window.load_url(f"{manager.base_url}/{VARIANT['route']}?shell={shell_mode}")
             else:
                 window.load_html(_error_page(result.get("error", "不明なエラー"), result.get("log", "")))
         except Exception:
