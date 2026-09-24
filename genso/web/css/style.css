@@ -89,13 +89,11 @@ body::before {
   background: linear-gradient(90deg, var(--accent), transparent);
 }
 .brand { display: flex; align-items: center; gap: 12px; white-space: nowrap; min-width: 0; }
-/* LinkHUB wordmark (LH-rogo3, tagline cropped). The PNG carries real alpha —
-   its black backdrop was converted to transparency — so it sits on any surface. */
-.brand-logo { display: block; height: 34px; width: auto; flex: 0 0 auto; }
-.brand-main {
-  color: #fff; font-size: 17px; line-height: 1; font-weight: 900; letter-spacing: .1em;
-  padding-left: 12px; border-left: 1px solid var(--border);
-}
+/* LinkHUB emblem (LH-rogo2). The PNG carries real alpha — its black backdrop
+   was converted to transparency — so it sits on any surface. "LinkHUB　零式"
+   stays as text next to it: that pair is one unit of the product name. */
+.brand-logo { display: block; width: 44px; height: 44px; flex: 0 0 auto; }
+.brand-main { color: #fff; font-size: 19px; line-height: 1; font-weight: 900; letter-spacing: .08em; }
 .brand-sub {
   color: var(--text-60); font-size: 10.5px; letter-spacing: .1em; line-height: 1;
   padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.02);
@@ -597,7 +595,7 @@ body dialog.genso-crop-dialog button[data-crop=ok]:hover { background: var(--acc
 @media (max-width: 720px) {
   .app-shell { padding: 0 14px; }
   .brand-sub, .engine-meta { display: none; }
-  .brand-logo { height: 28px; }
+  .brand-logo { width: 36px; height: 36px; }
   .mode-tabs { grid-template-columns: repeat(2, 1fr); }
   .settings-grid { grid-template-columns: repeat(2, 1fr); }
   .history-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
